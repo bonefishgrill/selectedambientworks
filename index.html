@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Selected Ambient Works</title>
+<style>
+  :root {
+    --bg: #000;
+    --rain: #00ff41;
+    --heart: #ff4fa3;
+    --heart-hi: #ff7dbd;
+    --label: #fff;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    font-family: Papyrus, fantasy;
+  }
+  canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  /* The YouTube player stays in the viewport (YouTube stalls players it
+     considers off-screen) but sits underneath the opaque rain canvas. */
+  #yt {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    width: 200px;
+    height: 200px;
+    z-index: -1;
+  }
+  button {
+    position: relative;
+    width: min(78vw, 380px);
+    aspect-ratio: 1;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* Slow 3D drift while playing; the beat itself is driven from script. */
+  .float {
+    position: absolute;
+    inset: 0;
+    perspective: 700px;
+  }
+  .float > * { transform-style: preserve-3d; }
+  body.playing .float > svg,
+  body.playing .float > img { animation: drift 11s ease-in-out infinite; }
+  @keyframes drift {
+    0%, 100% { transform: rotateY(-9deg) rotateX(4deg) translateY(0); }
+    25%      { transform: rotateY(3deg) rotateX(-3deg) translateY(-6px); }
+    50%      { transform: rotateY(10deg) rotateX(2deg) translateY(-2px); }
+    75%      { transform: rotateY(-2deg) rotateX(-4deg) translateY(-7px); }
+  }
+  button svg, button img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    overflow: visible;
+    filter: drop-shadow(0 0 calc(18px + var(--glow, 0) * 30px) rgba(210, 140, 255, calc(0.3 + var(--glow, 0) * 0.5)));
+  }
+  button img + svg { display: none; }
+  button img.missing { display: none; }
+  button img.missing + svg { display: block; }
+  button:focus-visible { outline: none; }
+  button:focus-visible svg, button:focus-visible img {
+    filter: drop-shadow(0 0 34px rgba(220, 150, 255, 0.85));
+  }
+  button span {
+    position: absolute;
+    left: 27%;
+    right: 27%;
+    top: 37%;
+    color: #fff;
+    font-size: clamp(14px, 3.8vw, 19px);
+    letter-spacing: 0.05em;
+    line-height: 1.35;
+    text-align: center;
+    text-shadow: 0 1px 3px rgba(80, 30, 140, 0.8), 0 0 14px rgba(80, 30, 140, 0.55);
+    transform: scale(var(--beat, 1));
+    pointer-events: none;
+  }
+  .pump {
+    transform-box: fill-box;
+    transform-origin: 50% 55%;
+    transform: scale(calc(var(--beat, 1) * var(--squash-x, 1)), var(--beat, 1));
+  }
+  .credit {
+    position: fixed;
+    right: max(22px, env(safe-area-inset-right));
+    bottom: max(18px, env(safe-area-inset-bottom));
+    z-index: 1;
+    color: #fff;
+    font-size: 15px;
+    letter-spacing: 0.06em;
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.9);
+    opacity: 0.85;
+  }
+  .credit a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  .credit a:hover, .credit a:focus-visible { text-decoration-thickness: 2px; outline: none; }
+</style>
+</head>
+<body>
+<canvas aria-hidden="true"></canvas>
+<div id="yt" aria-hidden="true"></div>
+<button type="button" aria-pressed="false">
+  <div class="float">
+  <img src="heart.png" alt="" onerror="this.classList.add('missing')">
+  <svg viewBox="0 0 120 120" aria-hidden="true">
+    <defs>
+      <path id="heart" d="M62 98 C 36 82, 12 64, 12 40 C 12 25, 24 15, 38 15 C 48 15, 56 20, 62 29 C 68 20, 76 15, 86 15 C 100 15, 110 25, 110 40 C 110 64, 88 82, 62 98 Z"/>
+      <clipPath id="clip"><use href="#heart"/></clipPath>
+
+      <!-- Iridescent body: the colour bands slowly turn. -->
+      <linearGradient id="g-body" x1="0" y1="0" x2="1" y2="0.35">
+        <stop offset="0" stop-color="#f6a6dc"/>
+        <stop offset="0.3" stop-color="#d77fe0"/>
+        <stop offset="0.55" stop-color="#a99ae6"/>
+        <stop offset="0.8" stop-color="#8fdaee"/>
+        <stop offset="1" stop-color="#c5a2f2"/>
+        <animateTransform attributeName="gradientTransform" type="rotate"
+          values="0 0.5 0.5; 360 0.5 0.5" dur="28s" repeatCount="indefinite"/>
+      </linearGradient>
+      <!-- Pearly second layer drifting the other way. -->
+      <radialGradient id="g-pearl" cx="0.7" cy="0.6" r="0.55">
+        <stop offset="0" stop-color="#9ff3ff" stop-opacity="0.55"/>
+        <stop offset="0.5" stop-color="#ff9fe0" stop-opacity="0.18"/>
+        <stop offset="1" stop-color="#ff9fe0" stop-opacity="0"/>
+        <animate attributeName="cx" values="0.7;0.35;0.6;0.7" dur="13s" repeatCount="indefinite"/>
+        <animate attributeName="cy" values="0.6;0.7;0.4;0.6" dur="17s" repeatCount="indefinite"/>
+      </radialGradient>
+      <!-- Edge darkening for roundness. -->
+      <radialGradient id="g-shade" cx="0.45" cy="0.38" r="0.68">
+        <stop offset="0.55" stop-color="#5a3ce8" stop-opacity="0"/>
+        <stop offset="0.85" stop-color="#5a3ce8" stop-opacity="0.45"/>
+        <stop offset="1" stop-color="#3a1fb8" stop-opacity="0.85"/>
+      </radialGradient>
+      <!-- Light wrapping round the lower-right edge. -->
+      <radialGradient id="g-bounce" cx="0.78" cy="0.82" r="0.35">
+        <stop offset="0" stop-color="#8ff6ff" stop-opacity="0.7"/>
+        <stop offset="1" stop-color="#8ff6ff" stop-opacity="0"/>
+      </radialGradient>
+
+      <filter id="inner" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3.2"/>
+      </filter>
+      <!-- Fine grain so it reads as a material, not a flat vector. -->
+      <filter id="grain" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" result="n"/>
+        <feColorMatrix in="n" type="matrix"
+          values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.22 0"/>
+      </filter>
+      <filter id="floor" x="-50%" y="-200%" width="200%" height="500%">
+        <feGaussianBlur stdDeviation="4"/>
+      </filter>
+    </defs>
+
+    <ellipse class="floor" cx="61" cy="111" rx="30" ry="3.2" fill="#7a4cff" opacity="0.45" filter="url(#floor)"/>
+
+    <g class="pump">
+      <use href="#heart" fill="url(#g-body)"/>
+      <use href="#heart" fill="url(#g-pearl)"/>
+      <use href="#heart" fill="url(#g-shade)"/>
+      <use href="#heart" fill="url(#g-bounce)"/>
+      <g clip-path="url(#clip)">
+        <rect x="0" y="0" width="120" height="120" filter="url(#grain)" style="mix-blend-mode: overlay"/>
+        <!-- Inner edge shadow and a thin rim light give it thickness. -->
+        <use href="#heart" fill="none" stroke="#3b1ec0" stroke-width="7" opacity="0.5" filter="url(#inner)"/>
+        <use href="#heart" fill="none" stroke="#fff" stroke-width="1" opacity="0.15" transform="translate(0.6 0.8)"/>
+      </g>
+    </g>
+  </svg>
+  </div>
+  <span>Play Selected Ambient Works</span>
+</button>
+<p class="credit">Created by <a href="https://ben-schechter.com" target="_blank" rel="noopener">Ben Schechter</a></p>
+
+<script>
+  // Matrix-style falling characters behind the button; runs only while music plays.
+  const rain = (() => {
+    const canvas = document.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    const glyphs = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789";
+    const size = 16;
+    let drops = [];
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = innerWidth * dpr;
+      canvas.height = innerHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, innerWidth, innerHeight);
+      const columns = Math.ceil(innerWidth / size);
+      drops = Array.from({ length: columns }, () => Math.random() * -innerHeight / size);
+    }
+
+    function step() {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.07)";
+      ctx.fillRect(0, 0, innerWidth, innerHeight);
+      ctx.font = size + "px monospace";
+      drops.forEach((y, i) => {
+        const ch = glyphs[Math.floor(Math.random() * glyphs.length)];
+        ctx.fillStyle = Math.random() < 0.04 ? "#d6ffe0" : "#00ff41";
+        ctx.fillText(ch, i * size, y * size);
+        drops[i] = y * size > innerHeight && Math.random() > 0.975 ? 0 : y + 1;
+      });
+    }
+
+    let last = 0;
+    let frame = 0;
+    function loop(now) {
+      if (now - last > 50) { step(); last = now; }
+      frame = requestAnimationFrame(loop);
+    }
+
+    addEventListener("resize", resize);
+    resize();
+
+    return {
+      start() {
+        if (!frame) frame = requestAnimationFrame(loop);
+      },
+      stop() {
+        cancelAnimationFrame(frame);
+        frame = 0;
+      },
+    };
+  })();
+</script>
+<script>
+  // Full album as one YouTube video; restarts from the top when it ends.
+  const VIDEO_ID = "Xw5AiRVqfqk";
+  const button = document.querySelector("button");
+  let player;
+  let primed = false;   // video has buffered silently and is parked at 0:00
+  let wantPlay = false; // heart pressed before priming finished
+
+  function setState(playing) {
+    playing ? rain.start() : rain.stop();
+    playing ? heartbeat.start() : heartbeat.stop();
+    document.body.classList.toggle("playing", playing);
+    button.setAttribute("aria-pressed", String(playing));
+  }
+
+  function start() {
+    player.unMute();
+    player.playVideo();
+  }
+
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player("yt", {
+      host: "https://www.youtube-nocookie.com",
+      videoId: VIDEO_ID,
+      playerVars: { controls: 0, disablekb: 1, playsinline: 1, rel: 0, origin: location.origin },
+      events: {
+        // Start muted so the browser lets it buffer, then park it at 0:00.
+        onReady: () => { player.mute(); player.playVideo(); },
+        onStateChange: (e) => {
+          const S = YT.PlayerState;
+          if (!primed && e.data === S.PLAYING) {
+            primed = true;
+            if (wantPlay) { player.seekTo(0, true); start(); }
+            else { player.seekTo(0, true); player.pauseVideo(); }
+            return;
+          }
+          if (!primed) return;
+          if (e.data === S.ENDED) { player.seekTo(0, true); player.playVideo(); }
+          if (e.data === S.PLAYING) setState(!player.isMuted());
+          if (e.data === S.PAUSED) setState(false);
+        },
+      },
+    });
+  };
+
+  button.addEventListener("click", () => {
+    if (!primed) {
+      wantPlay = !wantPlay;
+      setState(wantPlay);
+      if (wantPlay && player && player.unMute) player.unMute();
+      return;
+    }
+    if (player.getPlayerState() === YT.PlayerState.PLAYING && !player.isMuted()) {
+      player.pauseVideo();
+    } else {
+      start();
+    }
+  });
+</script>
+<script src="beats.js"></script>
+<script>
+  // Drives the heartbeat from the song: each detected beat swells the heart,
+  // bigger hits swell it more. Tracks with no clear beat get a slow resting pulse.
+  const heartbeat = (() => {
+    const tracks = window.BEATS || [];
+    const RHYTHMIC = 2;      // below this "clarity" a track counts as beatless
+    const root = button.style;
+    let frame = 0;
+    let clock = { yt: -1, t: 0, at: 0 };
+    let ti = 0, bi = 0;      // cached track / beat positions
+
+    // YouTube only reports its time every so often; run a local clock between reports.
+    function now() {
+      const yt = player.getCurrentTime();
+      const at = performance.now();
+      if (yt !== clock.yt) clock = { yt, t: yt, at };
+      return clock.t + (at - clock.at) / 1000;
+    }
+
+    function trackAt(t) {
+      if (!tracks.length) return null;
+      if (t < tracks[ti].start || (tracks[ti + 1] && t >= tracks[ti + 1].start)) {
+        ti = 0;
+        while (tracks[ti + 1] && t >= tracks[ti + 1].start) ti++;
+        bi = 0;
+      }
+      return tracks[ti];
+    }
+
+    // Swell envelope: quick rise, softer fall.
+    const swell = (dt) => dt < 0 ? 0 : dt < 0.035 ? dt / 0.035 : Math.exp(-(dt - 0.035) / 0.12);
+
+    function resting(t) {
+      const p = ((t % 1.05) + 1.05) % 1.05;           // ~57 bpm lub-dub
+      return { pulse: 0.55 * swell(p) + 0.35 * swell(p - 0.3), toNext: 1.05 - p, accent: 1 };
+    }
+
+    function rhythmic(track, t) {
+      const b = track.beats;
+      if (bi >= b.length || b[bi] > t) bi = 0;
+      while (bi + 1 < b.length && b[bi + 1] <= t) bi++;
+      if (b[bi] > t) return resting(t);
+      const dt = t - b[bi];
+      const toNext = bi + 1 < b.length ? b[bi + 1] - t : 1;
+      const accent = bi % 2 === 0 ? 1 : 0.6;          // lub (strong) / dub (softer)
+      return { pulse: (track.amp[bi] || 0.5) * swell(dt), toNext, accent };
+    }
+
+    function tick() {
+      const t = now();
+      const track = trackAt(t);
+      const s = track && track.clarity >= RHYTHMIC ? rhythmic(track, t) : resting(t);
+      const squeeze = s.toNext < 0.06 ? (1 - s.toNext / 0.06) * 0.025 : 0;
+      const beat = 1 + 0.12 * s.pulse * s.accent - squeeze;
+      root.setProperty("--beat", beat.toFixed(4));
+      root.setProperty("--squash-x", (1 + 0.025 * s.pulse * s.accent).toFixed(4));
+      root.setProperty("--glow", (s.pulse * s.accent).toFixed(3));
+      frame = requestAnimationFrame(tick);
+    }
+
+    return {
+      start() { if (!frame) frame = requestAnimationFrame(tick); },
+      stop() {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        root.setProperty("--beat", "1");
+        root.setProperty("--squash-x", "1");
+        root.setProperty("--glow", "0");
+      },
+    };
+  })();
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
