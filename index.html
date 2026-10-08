@@ -51,6 +51,12 @@
     height: 200px;
     z-index: -1;
   }
+  /* On phones the first tap has to land on the YouTube player itself, so until
+     the music starts the (invisible) player sits exactly over the heart. */
+  #yt.tap-target {
+    z-index: 5;
+    opacity: 0.01;
+  }
   button {
     position: relative;
     width: min(78vw, 380px);
@@ -267,6 +273,25 @@
   let player;
   let primed = false;   // video has buffered silently and is parked at 0:00
   let wantPlay = false; // heart pressed before priming finished
+  // Phones block sound unless the tap lands on the player itself.
+  const TOUCH = matchMedia("(pointer: coarse)").matches;
+  let tapped = false;   // on phones: the player has been started by a real tap
+
+  function coverHeart() {
+    const f = document.getElementById("yt");
+    if (tapped || !f) return;
+    const r = button.getBoundingClientRect();
+    f.classList.add("tap-target");
+    Object.assign(f.style, { left: r.left + "px", top: r.top + "px", right: "auto", bottom: "auto",
+                             width: r.width + "px", height: r.height + "px" });
+  }
+  function uncoverHeart() {
+    const f = document.getElementById("yt");
+    tapped = true;
+    f.classList.remove("tap-target");
+    f.removeAttribute("style");
+  }
+  if (TOUCH) addEventListener("resize", coverHeart);
 
   function setState(playing) {
     playing ? rain.start() : rain.stop();
@@ -287,7 +312,10 @@
       playerVars: { controls: 0, disablekb: 1, playsinline: 1, rel: 0, origin: location.origin },
       events: {
         // Start muted so the browser lets it buffer, then park it at 0:00.
-        onReady: () => { player.mute(); player.playVideo(); },
+        onReady: () => {
+          if (TOUCH) { primed = true; coverHeart(); return; }
+          player.mute(); player.playVideo();
+        },
         onStateChange: (e) => {
           const S = YT.PlayerState;
           if (!primed && e.data === S.PLAYING) {
@@ -297,6 +325,7 @@
             return;
           }
           if (!primed) return;
+          if (TOUCH && e.data === S.PLAYING && !tapped) uncoverHeart();
           if (e.data === S.ENDED) { player.seekTo(0, true); player.playVideo(); }
           if (e.data === S.PLAYING) setState(!player.isMuted());
           if (e.data === S.PAUSED) setState(false);
